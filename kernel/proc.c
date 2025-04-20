@@ -537,7 +537,7 @@ scheduler(void)
       // Count context switch and check if we need to print "330"
       acquire(&cswitch_lock);
       contextSwitches++;
-      if(contextSwitches % 100 == 0) {
+      if(contextSwitches % 10 == 0) {
         printf("330\n");
         // Wait for a much shorter time (approximately)
         for(volatile int i = 0; i < 10000000; i++);
