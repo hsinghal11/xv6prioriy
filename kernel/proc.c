@@ -490,6 +490,8 @@ scheduler(void)
     for(p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);
       if(p->state == RUNNABLE) {
+        // Ensure each process has at least 1 ticket
+        if(p->tickets < 1) p->tickets = 1;
         total_tickets += p->tickets;
       }
       release(&p->lock);
@@ -512,17 +514,25 @@ scheduler(void)
     for(p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);
       if(p->state == RUNNABLE) {
+        // Skip processes with 0 tickets
+        if(p->tickets <= 0) {
+          release(&p->lock);
+          continue;
+        }
+        
         ticket_counter += p->tickets;
         if(ticket_counter > winning_ticket) {
           winner = p;
           break;
         }
       }
-      release(&p->lock);
+      release(&p->lock); // Always release the lock before continuing
     }
     
     // If we found a winner
     if(winner) {
+      // Winner lock is already held from the loop above
+      
       // Switch to chosen process. It is the process's job
       // to release its lock and then reacquire it
       // before jumping back to us.
@@ -540,7 +550,7 @@ scheduler(void)
       if(contextSwitches % 10 == 0) {
         printf("330\n");
         // Wait for a much shorter time (approximately)
-        for(volatile int i = 0; i < 10000000; i++);
+        for(volatile int i = 0; i < 1000000; i++);
       }
       release(&cswitch_lock);
       

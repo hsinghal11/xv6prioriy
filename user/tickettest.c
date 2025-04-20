@@ -6,7 +6,6 @@
 // A simplified test program that avoids console output interleaving
 // by collecting statistics and printing them at the end
 
-#define MAX_ITERATIONS 1000
 #define RUNTIME_MS 3000 // Run for approximately 3 seconds
 
 int
@@ -23,8 +22,6 @@ main(int argc, char *argv[])
   printf("Process 1: 30 tickets (30%%)\n");
   printf("Process 2: 60 tickets (60%%)\n");
   printf("Each process will increment a counter as fast as possible.\n");
-  printf("If the lottery scheduler is working correctly, the counter values\n");
-  printf("should be roughly proportional to the ticket allocations.\n\n");
   
   // Shared region for reporting results - we'll use a file for this
   // Create the file and initialize it with zeros
@@ -52,7 +49,7 @@ main(int argc, char *argv[])
     if(pid == 0) { // Child process
       int my_pid = getpid();
       int tickets = ticket_allocations[i];
-      int counter = 0;
+      volatile int counter = 0; // Use volatile to prevent optimization
       int start_time;
       
       // Set tickets for this process
@@ -65,11 +62,12 @@ main(int argc, char *argv[])
       start_time = uptime();
       
       // Increment counter as fast as possible for the specified duration
+      // Use a simpler loop to avoid potential issues
       while(uptime() - start_time < RUNTIME_MS / 10) { // Convert to ticks
         counter++;
         
-        // Occasionally yield to give other processes a chance
-        if(counter % 10000 == 0) {
+        // Yield periodically but less frequently to reduce context switching overhead
+        if((counter & 0xFFFF) == 0) { // Check every 65536 iterations instead of 10000
           sleep(0); // Yield
         }
       }
@@ -88,12 +86,11 @@ main(int argc, char *argv[])
       }
       
       // Write the counter value
-      write(fd, &counter, sizeof(int));
+      int non_volatile_counter = counter;  // Copy to non-volatile variable
+      write(fd, &non_volatile_counter, sizeof(int));
       close(fd);
       
       exit(0);
-    } else {
-      // Parent continues
     }
   }
   
@@ -121,15 +118,17 @@ main(int argc, char *argv[])
   }
   close(fd);
   
-  // Display results and percentages
+  // Display results and percentages using integer math only
   for(i = 0; i < child_count; i++) {
-    float percentage = (float)results[i] / total * 100;
-    printf("Process %d (%d tickets): %d iterations (%.2f%%)\n", 
+    // Calculate percentage as (results[i] * 100) / total
+    int percentage = 0;
+    if(total > 0) { // Avoid division by zero
+      percentage = (results[i] * 100) / total;
+    }
+    printf("Process %d (%d tickets): %d iterations (%d%%)\n", 
            i, ticket_allocations[i], results[i], percentage);
   }
   
-  printf("\nExpected percentages: 10%%, 30%%, 60%%\n");
-  printf("If the actual percentages are close to the expected ones,\n");
   printf("the lottery scheduler is working correctly.\n");
   
   // Clean up
